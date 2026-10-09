@@ -37,6 +37,7 @@
       font-size: 24px;
       padding: 10px 30px;
       margin-top: 20px;
+      cursor: pointer;
     }
 
     .name-input {
@@ -70,7 +71,7 @@
   let participantCode = "anon";
 
   const GOOGLE_SCRIPT_URL =
-    "https://script.google.com/macros/s/AKfycbxbmnYBRhTPyK8uylAmtBr7bjqIPuhYKUc7CFxpLdNDj1FTXpES1x0OplQboD9T-IglgA/exec";
+    "https://script.google.com/macros/s/AKfycbwAuU2w_1Fs-UdVSIXYpujZloANhhItRRdNtnum3UVrFi9E9OGTxQrmlDvqtPiH2MPTyg/exec";
 
   const timeline = [];
 
@@ -108,12 +109,20 @@
       const button = document.getElementById('codeButton');
       const input = document.getElementById('participantCode');
 
-      button.addEventListener('click', function() {
+      function submitCode() {
         participantCode = input.value.trim() || "anon";
 
         jsPsych.finishTrial({
           participant_code: participantCode
         });
+      }
+
+      button.addEventListener('click', submitCode);
+
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          submitCode();
+        }
       });
 
       input.focus();
@@ -121,7 +130,7 @@
 
     on_finish: function(data) {
       jsPsych.data.addProperties({
-        participant_code: data.participant_code
+        participant_code: participantCode
       });
     }
   });
@@ -221,8 +230,9 @@
 
       on_finish: function(data) {
 
+        // jsPsych 6: 0 = Prawda, 1 = Fałsz
         data.response_label =
-          data.button_pressed == 0
+          Number(data.button_pressed) === 0
             ? "true"
             : "false";
 
@@ -257,30 +267,40 @@
 
   function saveResults() {
 
-    // Pobierz wszystkie próby Prawda/Fałsz
+    // Pobierz wszystkie 22 próby
     const trials = jsPsych.data.get()
       .filter({
         trial_type: "html-button-response"
       })
       .values();
 
-    // Przygotuj dane do Google Sheets
+    // Wyślij tylko potrzebne zmienne
+    const responses = trials.map(function(t, index) {
+      return {
+        clip_number: index + 1,
+        file: t.file,
+        button_pressed: t.button_pressed,
+        response_label: t.response_label,
+        correct_answer: t.correct_answer,
+        correct: t.correct,
+        rt: t.rt
+      };
+    });
+
     const payload = {
       participant_id: participantCode,
-      responses: trials
+      responses: responses
     };
 
-    // Wyślij wyniki do Google Apps Script
+    // Wyślij wyniki do Google Sheets
     fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-
       headers: {
         "Content-Type": "text/plain"
       },
-
-      body: JSON.stringify(payload)
-
+      body: JSON.stringify(payload),
+      keepalive: true
     })
     .then(function() {
       console.log(
@@ -289,36 +309,27 @@
     })
     .catch(function(error) {
       console.error(
-        "Błąd podczas wysyłania wyników:",
+        "Błąd wysyłania wyników:",
         error
       );
     });
 
     /*********************************
-     * 7) Lokalna kopia TSV
+     * 7) Zapasowy plik TSV
      *********************************/
 
-    let tsv = "movie_clip\tresponse\tcorrect\n";
+    let tsv =
+      "movie_clip\tresponse\tcorrect\trt_ms\n";
 
-    trials.forEach(function(t) {
-
-      const clip = t.file || "";
-      const response = t.response_label || "";
-
-      const correct =
-        typeof t.correct !== "undefined"
-          ? t.correct
-          : "";
-
+    responses.forEach(function(t) {
       tsv += [
-        clip,
-        response,
-        correct
+        t.file,
+        t.response_label,
+        t.correct,
+        t.rt
       ].join("\t") + "\n";
-
     });
 
-    // Utwórz plik TSV
     const blob = new Blob(
       [tsv],
       {
@@ -327,24 +338,18 @@
     );
 
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
 
     a.href = url;
-
-    a.download =
-      "dane_" + participantCode + ".tsv";
+    a.download = "dane_" + participantCode + ".tsv";
 
     document.body.appendChild(a);
-
     a.click();
-
     document.body.removeChild(a);
 
     setTimeout(function() {
       URL.revokeObjectURL(url);
     }, 1000);
-
   }
 
   /*********************************
