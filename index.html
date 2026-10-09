@@ -219,7 +219,34 @@
   ];
 
   /********************************
-   * 4. PRÓBY EKSPERYMENTALNE
+   * 4. ODCZYTYWANIE ODPOWIEDZI
+   ********************************/
+
+  function isValidButton(value) {
+    return value !== undefined &&
+           value !== null &&
+           (String(value) === "0" ||
+            String(value) === "1");
+  }
+
+  function getPressedButton(data) {
+
+    // Najpierw pole jsPsych 6
+    if (isValidButton(data.button_pressed)) {
+      return Number(data.button_pressed);
+    }
+
+    // Następnie alternatywne pole
+    if (isValidButton(data.response)) {
+      return Number(data.response);
+    }
+
+    // Nie zgadujemy odpowiedzi
+    return null;
+  }
+
+  /********************************
+   * 5. PRÓBY EKSPERYMENTALNE
    ********************************/
 
   clips.forEach(function(clip, index) {
@@ -253,47 +280,58 @@
 
       on_finish: function(data) {
 
-        // jsPsych 6.3.1 może używać
-        // pola response lub button_pressed.
+        // Oryginalne dane z jsPsych
+        const rawResponse = data.response;
+        const rawButton = data.button_pressed;
 
-        const pressed =
-          data.response !== undefined &&
-          data.response !== null
-            ? data.response
-            : data.button_pressed;
+        // Numer klikniętego przycisku
+        const pressed = getPressedButton(data);
 
-        const buttonNumber = Number(pressed);
+        // Zachowujemy dane diagnostyczne
+        data.raw_response =
+          rawResponse === undefined
+            ? null
+            : rawResponse;
+
+        data.raw_button_pressed =
+          rawButton === undefined
+            ? null
+            : rawButton;
+
+        data.button_number = pressed;
 
         // 0 = Prawda
         // 1 = Fałsz
-        if (buttonNumber === 0) {
+        if (pressed === 0) {
           data.response_label = "true";
-        } else if (buttonNumber === 1) {
+        } else if (pressed === 1) {
           data.response_label = "false";
         } else {
-          data.response_label = null;
+          data.response_label = "BRAK_ODPOWIEDZI";
         }
 
-        data.button_number =
-          pressed !== undefined &&
-          pressed !== null &&
-          pressed !== "" &&
-          Number.isFinite(buttonNumber)
-            ? buttonNumber
-            : null;
-
+        // Poprawność
         data.correct =
-          data.response_label === null
+          pressed === null
             ? null
             : data.response_label ===
               data.correct_answer;
+
+        // Informacje diagnostyczne
+        console.log("DIAGNOSTYKA ODPOWIEDZI", {
+          film: data.file,
+          response: rawResponse,
+          button_pressed: rawButton,
+          rozpoznany_przycisk: pressed,
+          odpowiedz: data.response_label
+        });
       }
     });
 
   });
 
   /********************************
-   * 5. EKRAN KOŃCOWY
+   * 6. EKRAN KOŃCOWY
    ********************************/
 
   timeline.push({
@@ -311,7 +349,7 @@
   });
 
   /********************************
-   * 6. ZAPIS WYNIKÓW
+   * 7. ZAPIS WYNIKÓW
    ********************************/
 
   function saveResults() {
@@ -328,13 +366,19 @@
         return {
           clip_number: index + 1,
           file: t.file,
+
+          // Dane diagnostyczne
+          raw_response: t.raw_response,
+          raw_button_pressed: t.raw_button_pressed,
+
+          // Rozpoznana odpowiedź
           button_number: t.button_number,
           response_label: t.response_label,
+
           correct_answer: t.correct_answer,
           correct: t.correct,
           rt: t.rt
         };
-
       }
     );
 
@@ -376,8 +420,9 @@
 
     let tsv =
       "participant\tclip_number\tmovie_clip" +
-      "\tresponse\tcorrect_answer" +
-      "\tcorrect\trt_ms\n";
+      "\tresponse\tcorrect_answer\tcorrect" +
+      "\trt_ms\traw_response" +
+      "\traw_button_pressed\tbutton_number\n";
 
     responses.forEach(function(t) {
 
@@ -388,7 +433,10 @@
         t.response_label,
         t.correct_answer,
         t.correct,
-        t.rt
+        t.rt,
+        t.raw_response,
+        t.raw_button_pressed,
+        t.button_number
       ].join("\t") + "\n";
 
     });
@@ -419,7 +467,7 @@
   }
 
   /********************************
-   * 7. URUCHOMIENIE
+   * 8. URUCHOMIENIE
    ********************************/
 
   jsPsych.init({
@@ -429,6 +477,9 @@
       saveResults();
     }
   });
+
+</script>
+</html>
 
 </script>
 </html>
